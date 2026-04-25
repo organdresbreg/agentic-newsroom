@@ -72,41 +72,65 @@ def is_valid_entity(text: str, label: str) -> bool:
         
     return True
 
-def load_watchlist_matcher(db: Session, nlp_obj: spacy.language.Language) -> Optional[PhraseMatcher]:
+def load_watchlist_matcher(db: Session, nlp_obj: spacy.language.Language) -> Optional[tuple]:
     """
-    Loads active entity names from Entity table into a SpaCy PhraseMatcher.
+    Loads active entity names AND their aliases from Entity table into a SpaCy PhraseMatcher.
+    Returns (matcher, alias_map, types_map)
+    
+    alias_map: { "alias_lower": "Canonical Name" }
+    types_map: { "canonical_name_lower": "TYPE" }
     """
     try:
         # Load entities that are NOT ignored
         active_entities = db.query(Entity).filter(Entity.is_ignored == False).all()
         
         if not active_entities:
-            return None
+            return None, {}, {}
             
         matcher = PhraseMatcher(nlp_obj.vocab, attr="LOWER")
-        # Use a set to avoid duplicates and convert to doc objects
-        patterns = [nlp_obj.make_doc(e.name) for e in active_entities]
+        types_map = {}
+        alias_map = {}
+        patterns = []
         
+        for e in active_entities:
+            # Add Canonical Name
+            doc = nlp_obj.make_doc(e.name)
+            patterns.append(doc)
+            types_map[e.name.lower()] = e.type 
+            alias_map[e.name.lower()] = e.name # Map itself to itself
+            
+            # Add Aliases
+            if e.aliases:
+                for alias in e.aliases:
+                    if alias and alias.strip():
+                        alias_doc = nlp_obj.make_doc(alias)
+                        patterns.append(alias_doc)
+                        alias_map[alias.lower()] = e.name # Map alias to canonical
+
         if not patterns:
-            return None
+            return None, {}, {}
             
         matcher.add("WATCH_LIST", patterns)
         
-        logger.info(f"[EXTRACTOR] Watch List cargada: {len(patterns)} entidades activas")
-        return matcher
+        logger.info(f"[EXTRACTOR] Watch List cargada: {len(patterns)} patrones (entidades + alias)")
+        return matcher, alias_map, types_map
     except Exception as e:
         logger.error(f"[EXTRACTOR] Error al cargar Watch List: {e}")
-        return None
+        return None, {}, {}
 
 def get_blacklisted_names(db: Session) -> Set[str]:
     """Returns a set of lowercase names of ignored entities."""
     ignored = db.query(Entity.name).filter(Entity.is_ignored == True).all()
     return {name[0].lower() for name in ignored}
 
-def _extract_from_item(db: Session, item: NewsItem, matcher: PhraseMatcher = None, blacklist: Set[str] = None):
+def _extract_from_item(db: Session, item: NewsItem, matcher: PhraseMatcher = None, watchlist_types: dict = None, alias_map: dict = None, blacklist: Set[str] = None):
     """Internal helper to process a single NewsItem."""
     if blacklist is None:
         blacklist = set()
+    if watchlist_types is None:
+        watchlist_types = {}
+    if alias_map is None:
+        alias_map = {}
         
     try:
         # Use Spanish content if available (translated), else fallback to original (native ES)
@@ -115,36 +139,46 @@ def _extract_from_item(db: Session, item: NewsItem, matcher: PhraseMatcher = Non
         text = f"{title}. {content}".strip()
         
         doc = nlp(text)
-        entities_to_save = {} # name_lower -> (name, type)
+        entities_to_save = {} # canonical_name_lower -> (canonical_name, type)
         
         # Step 1: Statistical NER
         for ent in doc.ents:
-            ent_name = ent.text.strip()
-            ent_name_lower = ent_name.lower()
+            ent_text = ent.text.strip()
+            ent_lower = ent_text.lower()
             ent_label = ent.label_
             
-            # Skip if in blacklist
-            if ent_name_lower in blacklist:
+            # Check if this text maps to a known canonical entity
+            canonical_name = alias_map.get(ent_lower, ent_text)
+            canonical_lower = canonical_name.lower()
+
+            # Skip if in blacklist (check canonical)
+            if canonical_lower in blacklist:
                 continue
                 
-            if is_valid_entity(ent_name, ent_label):
+            if is_valid_entity(ent_text, ent_label):
                 db_type = SPACY_TO_DB_MAP[ent_label]
-                entities_to_save[ent_name_lower] = (ent_name, db_type)
+                # If mapped, prefer the mapped type
+                if ent_lower in alias_map:
+                     db_type = watchlist_types.get(canonical_lower, db_type)
+                     
+                entities_to_save[canonical_lower] = (canonical_name, db_type)
         
         # Step 2: Deterministic Matcher (Watch List)
         if matcher:
             matches = matcher(doc)
             for match_id, start, end in matches:
                 span = doc[start:end]
-                ent_name = span.text.strip()
-                ent_name_lower = ent_name.lower()
+                ent_text = span.text.strip()
+                ent_lower = ent_text.lower()
                 
-                # If already found by NER, NER type is already there.
-                # If NOT found by NER, add it as valid entity.
-                if ent_name_lower not in entities_to_save:
-                    # CONCEPT is used as default for matcher results if not in NER
-                    if is_valid_entity(ent_name, "CONCEPT"):
-                        entities_to_save[ent_name_lower] = (ent_name, "CONCEPT")
+                # Resolve to Canonical Name
+                canonical_name = alias_map.get(ent_lower, ent_text)
+                canonical_lower = canonical_name.lower()
+                
+                if canonical_lower not in entities_to_save:
+                    # Use the specific type from WatchList if available, else default to CONCEPT
+                    ent_type = watchlist_types.get(canonical_lower, "CONCEPT")
+                    entities_to_save[canonical_lower] = (canonical_name, ent_type)
 
         # Step 3: Save and Link
         entities_added = 0
@@ -161,7 +195,6 @@ def _extract_from_item(db: Session, item: NewsItem, matcher: PhraseMatcher = Non
                 db.add(existing_entity)
                 db.flush()
             else:
-                # If entity exists, we preserve its type from DB, but we already have its name
                 pass
                 
             if existing_entity not in item.entities:
@@ -181,7 +214,7 @@ def process_pending_entities(db: Session, item_ids: List[int] = None) -> int:
     if nlp is None: return 0
     
     # Load Watch List Matcher and Black List once per batch
-    matcher = load_watchlist_matcher(db, nlp)
+    matcher, alias_map, watchlist_types = load_watchlist_matcher(db, nlp)
     blacklist = get_blacklisted_names(db)
     
     query = db.query(NewsItem).filter(NewsItem.entities_extracted == False)
@@ -193,7 +226,7 @@ def process_pending_entities(db: Session, item_ids: List[int] = None) -> int:
     items = query.all()
     count = 0
     for item in items:
-        if _extract_from_item(db, item, matcher, blacklist):
+        if _extract_from_item(db, item, matcher, watchlist_types, alias_map, blacklist):
             count += 1
     db.commit()
     return count
@@ -203,7 +236,7 @@ def process_native_pending(db: Session) -> int:
     if nlp is None: return 0
     
     # Load Watch List Matcher and Black List once per batch
-    matcher = load_watchlist_matcher(db, nlp)
+    matcher, alias_map, watchlist_types = load_watchlist_matcher(db, nlp)
     blacklist = get_blacklisted_names(db)
     
     # Query items that are ES and have not been processed.
@@ -218,7 +251,7 @@ def process_native_pending(db: Session) -> int:
     logger.info(f"[EXTRACTOR] Procesando {len(items)} noticias NATIVAS ES con SpaCy (+ WatchList & BlackList)...")
     count = 0
     for item in items:
-        if _extract_from_item(db, item, matcher, blacklist):
+        if _extract_from_item(db, item, matcher, watchlist_types, alias_map, blacklist):
             count += 1
     db.commit()
     return count

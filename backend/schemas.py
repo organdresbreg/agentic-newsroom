@@ -26,10 +26,12 @@ class EntityBase(BaseModel):
 
 class EntityCreate(EntityBase):
     source_ids: List[int] = []
+    aliases: List[str] = []
 
 class EntityResponse(EntityBase):
     id: int
     is_ignored: bool = False
+    aliases: List[str] = []
     sources: List[SourceResponse] = []
 
     class Config:
@@ -120,4 +122,17 @@ class InterestTopicResponse(InterestTopicBase):
     class Config:
         from_attributes = True
 
+
+class EntityTypeBase(BaseModel):
+    name: str
+    color: str
+
+class EntityTypeCreate(EntityTypeBase):
+    pass
+
+class EntityTypeResponse(EntityTypeBase):
+    id: int
+
+    class Config:
+        from_attributes = True
 

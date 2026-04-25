@@ -49,6 +49,7 @@ class Entity(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     type = Column(String)  # PERSON, ORGANIZATION, LOCATION, CONCEPT
     is_ignored = Column(Boolean, default=False)
+    aliases = Column(JSON, default=list)
 
     sources = relationship("Source", secondary=entity_sources, back_populates="entities")
     news_items = relationship("NewsItem", secondary=news_entities, back_populates="entities")
@@ -94,3 +95,10 @@ class InterestTopic(Base):
     exclusions = Column(String)  # Comma-separated
     relevance_level = Column(String)  # High, Medium, Low
     context_tags = Column(String)  # Comma-separated tags
+
+class EntityType(Base):
+    __tablename__ = "entity_types"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)  # e.g., "PERSON", "WEAPON"
+    color = Column(String, nullable=False)  # e.g., "blue", "red", "amber"

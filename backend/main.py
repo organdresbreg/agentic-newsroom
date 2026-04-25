@@ -48,6 +48,35 @@ def run_migrations():
 
 run_migrations()
 
+def initialize_entity_types():
+    """Ensure default entity types exist in the database."""
+    db = SessionLocal()
+    try:
+        # Check if EntityType table is empty
+        count = db.query(models.EntityType).count()
+        if count == 0:
+            default_types = [
+                {"name": "Persona", "color": "blue"},
+                {"name": "Organización", "color": "purple"},
+                {"name": "Lugar", "color": "green"},
+                {"name": "Concepto", "color": "slate"}
+            ]
+            for type_data in default_types:
+                entity_type = models.EntityType(**type_data)
+                db.add(entity_type)
+            db.commit()
+            print(f"[STARTUP] Initialized {len(default_types)} default entity types")
+        else:
+            print(f"[STARTUP] Entity types already initialized ({count} types)")
+    except Exception as e:
+        print(f"[STARTUP] Error initializing entity types: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+initialize_entity_types()
+
+
 app = FastAPI()
 
 # Configure CORS - Allow all origins for development
@@ -382,6 +411,70 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True}
 
+# Entity Type Endpoints
+
+@app.get("/api/entity-types", response_model=List[schemas.EntityTypeResponse])
+def read_entity_types(db: Session = Depends(get_db)):
+    """Get all entity types for dropdown population."""
+    entity_types = db.query(models.EntityType).all()
+    return entity_types
+
+@app.post("/api/entity-types", response_model=schemas.EntityTypeResponse)
+def create_entity_type(entity_type: schemas.EntityTypeCreate, db: Session = Depends(get_db)):
+    """Create a new custom entity type."""
+    # Check if type with same name already exists (case-insensitive)
+    existing = db.query(models.EntityType).filter(models.EntityType.name.ilike(entity_type.name)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Entity type with this name already exists")
+    
+    db_entity_type = models.EntityType(
+        name=entity_type.name,
+        color=entity_type.color
+    )
+    
+    try:
+        db.add(db_entity_type)
+        db.commit()
+        db.refresh(db_entity_type)
+        return db_entity_type
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/api/entity-types/{type_id}", response_model=schemas.EntityTypeResponse)
+def update_entity_type(type_id: int, entity_type: schemas.EntityTypeCreate, db: Session = Depends(get_db)):
+    """Update an existing entity type."""
+    db_type = db.query(models.EntityType).filter(models.EntityType.id == type_id).first()
+    if not db_type:
+        raise HTTPException(status_code=404, detail="Entity type not found")
+    
+    # Check if name is already taken by another type
+    existing = db.query(models.EntityType).filter(
+        models.EntityType.name.ilike(entity_type.name),
+        models.EntityType.id != type_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Entity type with this name already exists")
+    
+    db_type.name = entity_type.name
+    db_type.color = entity_type.color
+    
+    db.commit()
+    db.refresh(db_type)
+    return db_type
+
+@app.delete("/api/entity-types/{type_id}")
+def delete_entity_type(type_id: int, db: Session = Depends(get_db)):
+    """Delete an entity type."""
+    db_type = db.query(models.EntityType).filter(models.EntityType.id == type_id).first()
+    if not db_type:
+        raise HTTPException(status_code=404, detail="Entity type not found")
+    
+    # Optional: Prevent deletion of default types if desired, but here we'll allow it.
+    db.delete(db_type)
+    db.commit()
+    return {"ok": True}
+
 # Entity Endpoints
 
 @app.get("/api/entities", response_model=List[schemas.EntityResponse])
@@ -463,12 +556,13 @@ def toggle_ignore_entity(entity_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/system/export")
 def export_system(db: Session = Depends(get_db)):
-    """Export configuration tables: Source, InterestTopic, Entity, Tag, AgentConfig"""
+    """Export configuration tables: Source, InterestTopic, Entity, Tag, EntityType, AgentConfig"""
     try:
         sources = db.query(models.Source).all()
         topics = db.query(models.InterestTopic).all()
         entities = db.query(models.Entity).options(joinedload(models.Entity.sources)).all()
         tags = db.query(models.Tag).all()
+        entity_types = db.query(models.EntityType).all()
         configs = db.query(models.AgentConfig).all()
         
         # Format sources
@@ -520,6 +614,15 @@ def export_system(db: Session = Depends(get_db)):
                 "context_tags": it.context_tags
             })
             
+        # Format entity types
+        entity_types_data = []
+        for et in entity_types:
+            entity_types_data.append({
+                "id": et.id,
+                "name": et.name,
+                "color": et.color
+            })
+            
         # Format configs
         configs_data = []
         for c in configs:
@@ -532,6 +635,7 @@ def export_system(db: Session = Depends(get_db)):
             "sources": sources_data,
             "entities": entities_data,
             "tags": tags_data,
+            "entity_types": entity_types_data,
             "interest_topics": topics_data,
             "agent_config": configs_data,
             "version": "1.0",
@@ -551,11 +655,21 @@ async def import_system(data: dict, db: Session = Depends(get_db)):
         db.query(models.Source).delete()
         db.query(models.Entity).delete()
         db.query(models.Tag).delete()
+        db.query(models.EntityType).delete()
         db.query(models.InterestTopic).delete()
         db.query(models.AgentConfig).delete()
         db.commit()
         
-        # 2. Restore Tags
+        # 2. Restore Entity Types (must be before entities since entities reference types)
+        for et_data in data.get("entity_types", []):
+            new_entity_type = models.EntityType(
+                name=et_data["name"],
+                color=et_data["color"]
+            )
+            db.add(new_entity_type)
+        db.flush()
+        
+        # 3. Restore Tags
         tag_map = {} # old_id -> new_tag_obj
         for t_data in data.get("tags", []):
             old_id = t_data.get("id")
@@ -568,7 +682,7 @@ async def import_system(data: dict, db: Session = Depends(get_db)):
             db.flush()
             tag_map[old_id] = new_tag
             
-        # 3. Restore Sources
+        # 4. Restore Sources
         source_map = {} # old_id -> new_source_obj
         for s_data in data.get("sources", []):
             old_id = s_data.get("id")
@@ -585,7 +699,7 @@ async def import_system(data: dict, db: Session = Depends(get_db)):
             db.flush()
             source_map[old_id] = new_source
             
-        # 4. Restore Entities
+        # 5. Restore Entities
         for e_data in data.get("entities", []):
             new_entity = models.Entity(
                 name=e_data["name"],
@@ -602,7 +716,7 @@ async def import_system(data: dict, db: Session = Depends(get_db)):
                 new_entity.sources = related_sources
             db.add(new_entity)
             
-        # 5. Restore InterestTopics
+        # 6. Restore InterestTopics
         for it_data in data.get("interest_topics", []):
             new_topic = models.InterestTopic(
                 subject=it_data["subject"],
@@ -614,7 +728,7 @@ async def import_system(data: dict, db: Session = Depends(get_db)):
             )
             db.add(new_topic)
             
-        # 6. Restore AgentConfig
+        # 7. Restore AgentConfig
         for c_data in data.get("agent_config", []):
             new_config = models.AgentConfig(
                 key=c_data["key"],
