@@ -2,12 +2,12 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import News from './pages/News';
-import Newsroom from './pages/Newsroom';
+
 import Sources from './pages/Sources';
-import AIConfig from './pages/AIConfig';
+
 import Trash from './pages/Trash';
-import Topics from './pages/Topics';
-import Tags from './pages/Tags';
+
+
 import Entities from './pages/Entities';
 import Settings from './pages/Settings';
 import { ToastProvider } from './context/ToastContext';
@@ -23,12 +23,12 @@ function App() {
                         <Routes>
                             <Route path="/" element={<Layout />}>
                                 <Route index element={<News />} />
-                                <Route path="newsroom" element={<Newsroom />} />
-                                <Route path="topics" element={<Topics />} />
-                                <Route path="tags" element={<Tags />} />
+
+
+
                                 <Route path="sources" element={<Sources />} />
                                 <Route path="entities" element={<Entities />} />
-                                <Route path="ai-config" element={<AIConfig />} />
+
                                 <Route path="settings" element={<Settings />} />
                                 <Route path="trash" element={<Trash />} />
                                 <Route path="*" element={<Navigate to="/" replace />} />

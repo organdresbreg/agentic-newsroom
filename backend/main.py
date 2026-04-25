@@ -225,12 +225,6 @@ def update_news_status(news_id: int, status_update: schemas.NewsItemStatusUpdate
     db.refresh(item)
     return item
 
-@app.get("/api/news/approved", response_model=List[schemas.NewsItemResponse])
-def get_approved_news(db: Session = Depends(get_db)):
-    return db.query(models.NewsItem).options(
-        joinedload(models.NewsItem.source),
-        joinedload(models.NewsItem.entities)
-    ).filter(models.NewsItem.status == 'APPROVED').order_by(models.NewsItem.published_date.desc()).all()
 
 @app.get("/api/news/rejected", response_model=List[schemas.NewsItemResponse])
 def get_rejected_news(db: Session = Depends(get_db)):
@@ -277,81 +271,7 @@ def batch_restore_news(request: schemas.BatchIdRequest, db: Session = Depends(ge
     db.commit()
     return {"ok": True, "count": len(request.ids)}
 
-@app.get("/api/config", response_model=schemas.AIConfigSettings)
-def get_config(db: Session = Depends(get_db)):
-    api_key_config = db.query(models.AgentConfig).filter(models.AgentConfig.key == "gemini_api_key").first()
-    system_prompt_config = db.query(models.AgentConfig).filter(models.AgentConfig.key == "system_instructions").first()
-    
-    api_key = api_key_config.value if api_key_config else None
-    system_prompt = system_prompt_config.value if system_prompt_config else None
-    
-    # Mask API Key
-    if api_key and len(api_key) > 4:
-        masked_key = api_key[:4] + "*" * (len(api_key) - 4)
-    else:
-        masked_key = api_key
 
-    return schemas.AIConfigSettings(api_key=masked_key, system_prompt=system_prompt)
-
-@app.post("/api/config", response_model=schemas.AIConfigSettings)
-def update_config(config: schemas.AIConfigSettings, db: Session = Depends(get_db)):
-    # Update API Key if provided
-    if config.api_key:
-        # Check if it's masked (don't update if it is)
-        if not config.api_key.endswith("****"):
-            db_key = db.query(models.AgentConfig).filter(models.AgentConfig.key == "gemini_api_key").first()
-            if db_key:
-                db_key.value = config.api_key
-            else:
-                db_key = models.AgentConfig(key="gemini_api_key", value=config.api_key)
-                db.add(db_key)
-
-    # Update System Prompt if provided
-    if config.system_prompt is not None:
-        db_prompt = db.query(models.AgentConfig).filter(models.AgentConfig.key == "system_instructions").first()
-        if db_prompt:
-            db_prompt.value = config.system_prompt
-        else:
-            db_prompt = models.AgentConfig(key="system_instructions", value=config.system_prompt)
-            db.add(db_prompt)
-    
-    db.commit()
-    
-    # Return updated config (masked)
-    # Return updated config (masked)
-    return get_config(db)
-
-# Interest Topic Endpoints
-
-@app.get("/api/topics", response_model=List[schemas.InterestTopicResponse])
-def read_topics(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    topics = db.query(models.InterestTopic).offset(skip).limit(limit).all()
-    return topics
-
-@app.post("/api/topics", response_model=schemas.InterestTopicResponse)
-def create_topic(topic: schemas.InterestTopicCreate, db: Session = Depends(get_db)):
-    db_topic = models.InterestTopic(**topic.dict())
-    db.add(db_topic)
-    db.commit()
-    db.refresh(db_topic)
-    return db_topic
-
-@app.put("/api/topics/{topic_id}", response_model=schemas.InterestTopicResponse)
-def update_topic(topic_id: int, topic: schemas.InterestTopicCreate, db: Session = Depends(get_db)):
-    db_topic = db.query(models.InterestTopic).filter(models.InterestTopic.id == topic_id).first()
-    if db_topic is None:
-        raise HTTPException(status_code=404, detail="Topic not found")
-    
-    for key, value in topic.dict().items():
-        setattr(db_topic, key, value)
-    
-    db.commit()
-    db.refresh(db_topic)
-    return db_topic
-
-    db.delete(db_topic)
-    db.commit()
-    return {"ok": True}
 
 
 @app.post("/api/extract-entities")
@@ -365,51 +285,6 @@ def extract_entities(db: Session = Depends(get_db)):
         return {"extracted_count": count}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-# Tag Endpoints
-
-@app.get("/api/tags", response_model=List[schemas.TagResponse])
-def read_tags(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    tags = db.query(models.Tag).offset(skip).limit(limit).all()
-    return tags
-
-@app.post("/api/tags", response_model=schemas.TagResponse)
-def create_tag(tag: schemas.TagCreate, db: Session = Depends(get_db)):
-    db_tag = models.Tag(**tag.dict())
-    try:
-        db.add(db_tag)
-        db.commit()
-        db.refresh(db_tag)
-        return db_tag
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.put("/api/tags/{tag_id}", response_model=schemas.TagResponse)
-def update_tag(tag_id: int, tag: schemas.TagCreate, db: Session = Depends(get_db)):
-    db_tag = db.query(models.Tag).filter(models.Tag.id == tag_id).first()
-    if db_tag is None:
-        raise HTTPException(status_code=404, detail="Tag not found")
-    
-    for key, value in tag.dict().items():
-        setattr(db_tag, key, value)
-    
-    try:
-        db.commit()
-        db.refresh(db_tag)
-        return db_tag
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.delete("/api/tags/{tag_id}")
-def delete_tag(tag_id: int, db: Session = Depends(get_db)):
-    db_tag = db.query(models.Tag).filter(models.Tag.id == tag_id).first()
-    if db_tag is None:
-        raise HTTPException(status_code=404, detail="Tag not found")
-    db.delete(db_tag)
-    db.commit()
-    return {"ok": True}
 
 # Entity Type Endpoints
 
@@ -559,9 +434,9 @@ def export_system(db: Session = Depends(get_db)):
     """Export configuration tables: Source, InterestTopic, Entity, Tag, EntityType, AgentConfig"""
     try:
         sources = db.query(models.Source).all()
-        topics = db.query(models.InterestTopic).all()
+
         entities = db.query(models.Entity).options(joinedload(models.Entity.sources)).all()
-        tags = db.query(models.Tag).all()
+
         entity_types = db.query(models.EntityType).all()
         configs = db.query(models.AgentConfig).all()
         
@@ -591,28 +466,7 @@ def export_system(db: Session = Depends(get_db)):
                 "source_ids": [s.id for s in e.sources]
             })
             
-        # Format tags
-        tags_data = []
-        for t in tags:
-            tags_data.append({
-                "id": t.id,
-                "name": t.name,
-                "color": t.color,
-                "description": t.description
-            })
             
-        # Format topics
-        topics_data = []
-        for it in topics:
-            topics_data.append({
-                "id": it.id,
-                "subject": it.subject,
-                "scope": it.scope,
-                "keywords": it.keywords,
-                "exclusions": it.exclusions,
-                "relevance_level": it.relevance_level,
-                "context_tags": it.context_tags
-            })
             
         # Format entity types
         entity_types_data = []
@@ -634,9 +488,9 @@ def export_system(db: Session = Depends(get_db)):
         return {
             "sources": sources_data,
             "entities": entities_data,
-            "tags": tags_data,
+
             "entity_types": entity_types_data,
-            "interest_topics": topics_data,
+
             "agent_config": configs_data,
             "version": "1.0",
             "timestamp": datetime.utcnow().isoformat()
@@ -649,14 +503,14 @@ async def import_system(data: dict, db: Session = Depends(get_db)):
     """Wipe config tables and restore from JSON. Preserve NewsItems."""
     try:
         # 1. Wipe Config Tables (Order matters due to FKs if any, though here it's mostly secondary tables)
-        db.execute(text("DELETE FROM news_tags")) # We wipe news-tag associations because Tag IDs will change
+
         db.execute(text("DELETE FROM news_entities")) # We wipe news-entity associations
         db.execute(text("DELETE FROM entity_sources"))
         db.query(models.Source).delete()
         db.query(models.Entity).delete()
-        db.query(models.Tag).delete()
+
         db.query(models.EntityType).delete()
-        db.query(models.InterestTopic).delete()
+
         db.query(models.AgentConfig).delete()
         db.commit()
         
@@ -669,18 +523,6 @@ async def import_system(data: dict, db: Session = Depends(get_db)):
             db.add(new_entity_type)
         db.flush()
         
-        # 3. Restore Tags
-        tag_map = {} # old_id -> new_tag_obj
-        for t_data in data.get("tags", []):
-            old_id = t_data.get("id")
-            new_tag = models.Tag(
-                name=t_data["name"],
-                color=t_data.get("color", "blue"),
-                description=t_data.get("description")
-            )
-            db.add(new_tag)
-            db.flush()
-            tag_map[old_id] = new_tag
             
         # 4. Restore Sources
         source_map = {} # old_id -> new_source_obj
@@ -716,17 +558,6 @@ async def import_system(data: dict, db: Session = Depends(get_db)):
                 new_entity.sources = related_sources
             db.add(new_entity)
             
-        # 6. Restore InterestTopics
-        for it_data in data.get("interest_topics", []):
-            new_topic = models.InterestTopic(
-                subject=it_data["subject"],
-                scope=it_data["scope"],
-                keywords=it_data.get("keywords", ""),
-                exclusions=it_data.get("exclusions", ""),
-                relevance_level=it_data.get("relevance_level", "Medium"),
-                context_tags=it_data.get("context_tags", "")
-            )
-            db.add(new_topic)
             
         # 7. Restore AgentConfig
         for c_data in data.get("agent_config", []):

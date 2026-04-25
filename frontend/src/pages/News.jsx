@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
-import { Filter, CheckSquare, Square, Trash2, CheckCircle, RefreshCw, LayoutDashboard, ExternalLink, Sparkles, FileText, Loader2 } from 'lucide-react';
+import { Filter, CheckSquare, Square, Trash2, RefreshCw, LayoutDashboard, ExternalLink, FileText, Loader2 } from 'lucide-react';
 import { useHighlight } from '../context/HighlightContext';
 import Reader from '../components/Reader';
 import { cn } from '../lib/utils';
@@ -104,7 +104,7 @@ const News = () => {
             if (!response.ok) {
                 throw new Error('Failed to update status');
             }
-            addToast(status === 'APPROVED' ? 'Noticia aprobada' : 'Noticia descartada', 'success');
+            addToast('Noticia descartada', 'success');
             if (status === 'REJECTED') {
                 addHighlight('trash', [id]);
             }
@@ -137,7 +137,7 @@ const News = () => {
             }
         }
 
-        addToast(`${successCount} noticias ${status === 'APPROVED' ? 'aprobadas' : 'descartadas'}`, 'success');
+        addToast(`${successCount} noticias descartadas`, 'success');
         fetchStats();
     };
 
@@ -251,13 +251,7 @@ const News = () => {
                     {/* Bulk Actions */}
                     {selectedItems.size > 0 && (
                         <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-200">
-                            <button
-                                onClick={() => handleBulkAction('APPROVED')}
-                                className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1 text-sm font-medium"
-                            >
-                                <CheckCircle size={16} />
-                                Aprobar ({selectedItems.size})
-                            </button>
+
                             <button
                                 onClick={() => handleBulkAction('REJECTED')}
                                 className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-1 text-sm font-medium"
@@ -417,13 +411,7 @@ const News = () => {
                                                 >
                                                     <ExternalLink size={18} />
                                                 </a>
-                                                <button
-                                                    onClick={() => updateStatus(item.id, 'APPROVED')}
-                                                    className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-md transition-colors"
-                                                    title="Aprobar"
-                                                >
-                                                    <CheckCircle size={18} />
-                                                </button>
+
                                                 <button
                                                     onClick={() => updateStatus(item.id, 'REJECTED')}
                                                     className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"

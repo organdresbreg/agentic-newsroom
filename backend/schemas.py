@@ -46,19 +46,6 @@ class EntitySimpleResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class TagBase(BaseModel):
-    name: str
-    color: str = "blue"
-    description: Optional[str] = None
-
-class TagCreate(TagBase):
-    pass
-
-class TagResponse(TagBase):
-    id: int
-
-    class Config:
-        from_attributes = True
 
 class NewsItemBase(BaseModel):
     title: str
@@ -78,7 +65,7 @@ class NewsItemResponse(NewsItemBase):
     content_snippet: Optional[str] = None
     title_es: Optional[str] = None
     content_es: Optional[str] = None
-    tags: List[TagResponse] = []
+
     entities: List[EntitySimpleResponse] = []
 
     class Config:
@@ -105,22 +92,6 @@ class AIConfigSettings(BaseModel):
     api_key: Optional[str] = None
     system_prompt: Optional[str] = None
 
-class InterestTopicBase(BaseModel):
-    subject: str
-    scope: str
-    keywords: str
-    exclusions: Optional[str] = None
-    relevance_level: str
-    context_tags: Optional[str] = None
-
-class InterestTopicCreate(InterestTopicBase):
-    pass
-
-class InterestTopicResponse(InterestTopicBase):
-    id: int
-
-    class Config:
-        from_attributes = True
 
 
 class EntityTypeBase(BaseModel):

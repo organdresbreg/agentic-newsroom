@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FileText, Settings as GearIcon, Sun, Moon, ChevronLeft, ChevronRight, Wifi, WifiOff, Newspaper, Bot, Trash2, Rss, Target, Tag, Database } from 'lucide-react';
+import { LayoutDashboard, FileText, Settings as GearIcon, Sun, Moon, ChevronLeft, ChevronRight, Wifi, WifiOff, Newspaper, Trash2, Rss, Database } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { cn } from '../lib/utils';
 
@@ -91,13 +91,13 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
 
             {/* Navigation */}
             <nav className="flex-1 p-2 space-y-1 mt-4 overflow-y-auto">
-                <NavItem to="/topics" icon={Target} label="Temas" />
-                <NavItem to="/tags" icon={Tag} label="Etiquetas" />
+
+
                 <NavItem to="/entities" icon={Database} label="Entidades" />
                 <NavItem to="/sources" icon={Rss} label="Fuentes" />
                 <NavItem to="/" icon={LayoutDashboard} label="Noticias" />
-                <NavItem to="/newsroom" icon={FileText} label="Redacción" />
-                <NavItem to="/ai-config" icon={Bot} label="Agente IA" />
+
+
             </nav>
 
             {/* Footer */}

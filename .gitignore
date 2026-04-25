@@ -1,3 +1,15 @@
-(agentic-newsroom-description.md is a markdown file, which is source/config file, so no need to add to .gitignore)
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+news.db
 
-# No changes needed - empty .gitignore
+# Node/Frontend
+node_modules/
+dist/
+.DS_Store
+
+# IDE
+.vscode/
+.idx/

@@ -31,15 +31,11 @@ agentic-newsroom/
     │   ├── main.jsx           # Entry point React
     │   ├── index.css          # Estilos globales Tailwind
     │   ├── pages/             # Vistas principales
-    │   │   ├── News.jsx       # Dashboard de noticias descubiertas
-    │   │   ├── Newsroom.jsx   # Noticias aprobadas
-    │   │   ├── Sources.jsx    # Gestión de fuentes RSS
-    │   │   ├── Entities.jsx   # Gestión de entidades (NER)
-    │   │   ├── Topics.jsx     # Temas de interés
-    │   │   ├── Tags.jsx       # Sistema de etiquetas
-    │   │   ├── AIConfig.jsx   # Configuración de IA
-    │   │   ├── Settings.jsx   # Configuración general
-    │   │   └── Trash.jsx      # Papelera de reciclaje
+        │   │   ├── News.jsx       # Dashboard de noticias descubiertas
+        │   │   ├── Sources.jsx    # Gestión de fuentes RSS
+        │   │   ├── Entities.jsx   # Gestión de entidades (NER)
+        │   │   ├── Settings.jsx   # Configuración general
+        │   │   └── Trash.jsx      # Papelera de reciclaje
     │   ├── components/        # Componentes reutilizables
     │   │   ├── Layout.jsx     # Layout principal con sidebar
     │   │   ├── Sidebar.jsx    # Navegación lateral
@@ -212,7 +208,7 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
 | url | String | URL única |
 | published_date | String | Fecha de publicación (ISO) |
 | created_at | DateTime | Timestamp de creación |
-| status | String | DISCOVERED, APPROVED, REJECTED |
+| status | String | DISCOVERED, REJECTED |
 | language | String | Código ISO detectado |
 | content_snippet | String | Contenido limpio (original) |
 | full_content | Text | Contenido completo (opcional) |
@@ -236,24 +232,6 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
 | name | String | Nombre del tipo (ej: "PERSON") |
 | color | String | Color para UI (blue, purple, green, etc.) |
 
-#### `tags`
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| id | Integer | PK |
-| name | String | Nombre único |
-| color | String | Color para UI |
-| description | String | Descripción opcional |
-
-#### `interest_topics`
-| Columna | Tipo | Descripción |
-|---------|------|-------------|
-| id | Integer | PK |
-| subject | String | Asunto principal |
-| scope | String | Alcance geográfico/temático |
-| keywords | String | Palabras clave (comma-separated) |
-| exclusions | String | Términos de exclusión |
-| relevance_level | String | High, Medium, Low |
-| context_tags | String | Tags de contexto |
 
 #### `agent_config`
 | Columna | Tipo | Descripción |
@@ -263,7 +241,6 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
 
 ### Tablas Intermedias (Many-to-Many)
 
-- `news_tags`: news_items ↔ tags
 - `news_entities`: news_items ↔ entities
 - `entity_sources`: entities ↔ sources
 
@@ -283,9 +260,8 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
 | GET | `/api/news/discovered` | Noticias en estado DISCOVERED |
-| GET | `/api/news/approved` | Noticias aprobadas (Newsroom) |
 | GET | `/api/news/rejected` | Noticias rechazadas |
-| PUT | `/api/news/{id}/status` | Cambiar estado (APPROVE/REJECT) |
+| PUT | `/api/news/{id}/status` | Cambiar estado (REJECT) |
 | DELETE | `/api/news/{id}` | Eliminar noticia individual |
 | POST | `/api/news/batch/delete` | Eliminación masiva |
 | POST | `/api/news/batch/restore` | Restauración masiva |
@@ -315,27 +291,6 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
 | PUT | `/api/entity-types/{id}` | Actualizar tipo |
 | DELETE | `/api/entity-types/{id}` | Eliminar tipo |
 
-### Tags
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/api/tags` | Listar tags |
-| POST | `/api/tags` | Crear tag |
-| PUT | `/api/tags/{id}` | Actualizar tag |
-| DELETE | `/api/tags/{id}` | Eliminar tag |
-
-### Temas de Interés
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/api/topics` | Listar temas |
-| POST | `/api/topics` | Crear tema |
-| PUT | `/api/topics/{id}` | Actualizar tema |
-| DELETE | `/api/topics/{id}` | Eliminar tema |
-
-### Configuración IA
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/api/config` | Obtener configuración (API key enmascarada) |
-| POST | `/api/config` | Guardar configuración (API key + system prompt) |
 
 ### Dashboard
 | Método | Endpoint | Descripción |
@@ -351,8 +306,8 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
 - Lista noticias en estado `DISCOVERED`
 - **Acciones:**
   - Escaneo manual de fuentes (botón con spinner)
-  - Aprobación/rechazo individual
-  - Selección múltiple para acciones batch
+  - Rechazo individual (enviar a papelera)
+  - Selección múltiple para acciones batch (descartar)
   - Filtro por fuente
   - Resaltado visual de items recién encontrados
   - Lector modal (Reader.jsx) para vista previa
@@ -361,64 +316,14 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
   - Iconos de entidades adjuntas
   - Estado de traducción
 
-### 2. **Newsroom.jsx** - Sala de Redacción
-- Noticias aprobadas listas para publicación
-- Vista similar a News pero enfocada en contenido final
-- Exportación/Compartir (según implementación)
 
-### 3. **Entities.jsx** - Gestor de Entidades
-- **Vista dual:** Activas vs Ignoradas (tabs)
-- **Filtros:**
-  - Por tipo (PERSON, ORGANIZATION, etc.)
-  - Por letra inicial (alfabeto navegable)
-  - Búsqueda por texto
-- **CRUD completo:**
-  - Crear/editar con aliases
-  - Asignar a fuentes específicas
-  - Ignorar/restaurar entidades
-  - Eliminación
-- **Visualización:**
-  - Íconos por tipo (User, Building2, MapPin, Lightbulb)
-  - Badges de colores según tipo
-  - Contador de noticias asociadas
-
-### 4. **Sources.jsx** - Administración de Fuentes
-- Lista todas las fuentes configuradas
-- Formulario para agregar/editar:
-  - Nombre, tipo, subtipo
-  - Configuración JSON (URL, headers)
-  - Ícono personalizado
-- Indicador de salud (health_status)
-- Toggle activo/inactivo
-
-### 5. **Topics.jsx** - Temas de Interés
-- Define alcances editoriales
-- Campos:
-  - Asunto (subject)
-  - Alcance (scope)
-  - Palabras clave (keywords)
-  - Exclusiones
-  - Nivel de relevancia (High/Medium/Low)
-  - Tags de contexto
-
-### 6. **Tags.jsx** - Sistema de Etiquetado
-- CRUD de etiquetas
-- Selector de color
-- Descripción opcional
-- Uso para clasificación manual
-
-### 7. **AIConfig.jsx** - Configuración de IA
-- **Gemini/Groq API Key:** Input seguro (enmascarado en GET)
-- **System Prompt:**Textarea para instrucciones personalizadas del agente
-- Guía de mejores prácticas para prompts
-
-### 8. **Trash.jsx** - Papelera de Reciclaje
+### 2. **Trash.jsx** - Papelera de Reciclaje
 - Noticias eliminadas (soft delete pending)
 - Acciones:
   - Restaurar individual/múltiple
   - Vaciar papelera completamente
 
-### 9. **Settings.jsx** - Configuración General
+### 3. **Settings.jsx** - Configuración General
 - Preferencias de usuario
 - Configuración de la aplicación
 
@@ -428,7 +333,7 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
 - Modal de lectura inmersiva
 - Muestra título, contenido, metadata
 - Resalta entidades mencionadas
-- Acciones rápidas (aprobar, rechazar, etiquetar)
+- Acciones rápidas (descartar)
 
 #### `Sidebar.jsx`
 - Navegación principal
@@ -463,7 +368,7 @@ La función `is_valid_entity()` aplica reglas para evitar "basura":
 - **Heurísticas de validación**: Filtra entidades inválidas
 
 ### ✅ Flexibilidad Editorial
-- **Flujo de aprobación**: Control humano sobre publicación
+- **Control editorial**: Las noticias permanecen activas hasta ser descartadas.
 - **Blacklist de entidades**: Ignora términos no deseados
 - **Aliases**: Reconoce variaciones de nombres
 - **Tipos personalizables**: Extiende más allá de PER/ORG/LOC
